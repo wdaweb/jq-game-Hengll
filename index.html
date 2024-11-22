@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>踩地雷</title>
+    <style>
+        #game-area {
+            outline: 1px solid #aaa;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        #game-area img {
+            width: 90%;
+            height: 90%;
+        }
+
+        .mines {
+            width: 25px;
+            height: 25px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            float: left;
+            text-align: center;
+            line-height: 25px;
+            position: relative;
+            background: url(./images/1.png);
+            background-size: 100%;
+            background-repeat: no-repeat;
+        }
+
+        .not-mines {
+            width: 25px;
+            height: 25px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            float: left;
+            text-align: center;
+            line-height: 25px;
+            position: relative;
+        }
+
+        .cover {
+            width: 25px;
+            height: 25px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            position: absolute;
+            top: -1px;
+            left: -1px;
+            background: linear-gradient(135deg, black, blue);
+        }
+
+        .flag {
+            width: 25px;
+            height: 25px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            position: absolute;
+            top: -1px;
+            left: -1px;
+            background-image: url(./images/flag.png),
+                linear-gradient(135deg, black, blue);
+            background-size: 100%;
+        }
+
+        #text {
+            margin: 10px 0;
+        }
+
+        #text div {
+            display: inline-block;
+            width: 200px;
+        }
+
+        #fast {
+            margin: 10px 0;
+        }
+
+        #fast div {
+            display: inline-block;
+            width: 200px;
+            color: red;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="sels">
+        <select id="select">
+            <option value="初級">初級</option>
+            <option value="中級">中級</option>
+            <option value="高級">高級</option>
+        </select>
+        <input id="start" type="button" value="點擊後開始遊戲">
+    </div>
+    <div id="text">
+        <div>經過時間: <span id="time-left">0</span> 秒</div>
+        <div>剩餘地雷: <span id="mines-left">-</span> 顆</div>
+    </div>
+    <div id="fast">
+        <div>最低秒數: <span id="fast-time">-</span> 秒</div>
+        <div>玩家名稱: <span id="fast-name">-</span></div>
+    </div>
+    <div id="game-area"></div>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js'
+        integrity='sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=='
+        crossorigin='anonymous'></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script>
+        // 紀錄計時器ID，用來清除計時器
+        let intervalID
+        // 計算經過時間
+        let time = 0
+        // 預設地雷數量
+        let mines = 10
+        // 預設每列格子數
+        let = lattices = 10
+        // 初級最快秒數
+        const eazyFastTime = {
+            name: '-',
+            time: '-'
+        }
+        // 中級最快秒數
+        const normalFastTime = {
+            name: '-',
+            time: '-'
+        }
+        // 高級最快秒數
+        const hardFastTime = {
+            name: '-',
+            time: '-'
+        }
+
+        if (localStorage.eazyMines) {
+            const data = JSON.parse(localStorage.eazyMines)
+            eazyFastTime.name = data.name
+            eazyFastTime.time = data.time
+            $('#fast-name').text(eazyFastTime.name)
+            $('#fast-time').text(eazyFastTime.time)
+        }
+
+        if (localStorage.normalMines) {
+            const data = JSON.parse(localStorage.normalMines)
+            normalFastTime.name = data.name
+            normalFastTime.time = data.time
+        }
+
+        if (localStorage.hardMines) {
+            const data = JSON.parse(localStorage.hardMines)
+            hardFastTime.name = data.name
+            hardFastTime.time = data.time
+        }
+
+        // 隨機函數，最小值/最大值/抽幾個(不重複)，回傳陣列
+        const rand = (min, max, n) => {
+            const returnNums = []
+            const nums = Array.from({ length: max - min + 1 }, (value, index) => {
+                return index
+            })
+
+            while (returnNums.length < n) {
+                const random = Math.floor(Math.random() * nums.length)
+                returnNums.push(nums[random])
+                nums.splice(random, 1)
+            }
+            returnNums.sort((a, b) => {
+                return a - b
+            })
+            return returnNums
+        }
+
+        // 地雷重置和生成函數，mine為地雷數量，lattice為每列的格子數
+        const game = function (mine, lattice) {
+            // 決定遊戲區域長寬
+            $('#game-area').css('width', `${25 * lattice}px`)
+            $('#game-area').css('hight', `${25 * lattice}px`)
+            // 地雷數量重置
+            mines = mine
+            $('#mines-left').text(mine)
+            // 遊戲開始前鎖定遊戲區域事件
+            $('#game-area').css('pointer-events', 'none')
+
+            // 時間歸零
+            time = 0
+            $('#time-left').text(time)
+
+            // 清除計時器
+            clearInterval(intervalID)
+
+            // 清空遊戲區域
+            $('#game-area').empty()
+
+            // 隨機地雷位置
+            const minesPos = rand(0, lattice ** 2 - 1, mines)
+
+            // 生成地雷
+            for (let i = 0; i < lattice ** 2; i++) {
+                if (minesPos.includes(i)) {
+                    $('#game-area').append(`<div id="x${i % lattice}-y${Math.floor(i / lattice)}" class="mines closed"><div class="cover"></div></div>`)
+                }
+                else {
+                    $('#game-area').append(`<div id="x${i % lattice}-y${Math.floor(i / lattice)}" class="not-mines closed"><div class="cover"></div></div>`)
+                }
+            }
+        }
+
+        // 計算周圍地雷數量
+        const numOfMines = function (box) {
+            let sum = 0
+            const x = parseInt(box.parent().attr('id').match(/x[0-9]+/g)[0].slice(1))
+            const y = parseInt(box.parent().attr('id').match(/y[0-9]+/g)[0].slice(1))
+
+            // 計算傳入格子(box)周圍的地雷數量
+            for (let i = x - 1; i <= x + 1; i++) {
+                if (i >= 0 && i < 25) {
+                    for (let j = y - 1; j <= y + 1; j++) {
+                        if (j >= 0 && j < 25) {
+                            if ($(`#x${i}-y${j}`).hasClass('mines')) {
+                                sum++
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 如果sum=0，繼續採周圍地雷(連鎖踩地雷)
+            if (sum === 0) {
+                for (let i = x - 1; i <= x + 1; i++) {
+                    if (i >= 0 && i < 25) {
+                        for (let j = y - 1; j <= y + 1; j++) {
+                            if (j >= 0 && j < 25) {
+                                if ($(`#x${i}-y${j}`).hasClass('closed')) {
+                                    $(`#x${i}-y${j}`).children().trigger('click')
+                                }
+                            }
+                        }
+                    }
+                }
+                return ''
+            }
+            return sum
+        }
+
+        // 選擇難度
+        $('select').on('input', function () {
+            if ($('select').val() === '初級') {
+                $('#fast-name').text(eazyFastTime.name)
+                $('#fast-time').text(eazyFastTime.time)
+                game(10, 10)
+            }
+            else if ($('select').val() === '中級') {
+                $('#fast-name').text(normalFastTime.name)
+                $('#fast-time').text(normalFastTime.time)
+                game(45, 16)
+            }
+            else {
+                $('#fast-name').text(hardFastTime.name)
+                $('#fast-time').text(hardFastTime.time)
+                game(99, 25)
+            }
+        })
+
+        // 點擊開始遊戲
+        $('#start').on('click', function () {
+            // 觸發難度選擇
+            $('select').trigger('input')
+            // 開啟遊戲區域事件
+            $('#game-area').css('pointer-events', 'auto')
+
+            // 檢查過關/爆炸
+            intervalID = setInterval(function () {
+                // 計時並顯示
+                time += 0.1
+                $('#time-left').text(Math.floor(time))
+
+                // 如果開到地雷
+                if (!$('.mines').hasClass('closed')) {
+                    Swal.fire({
+                        title: "炸!!!",
+                    })
+                    $('#game-area').css('pointer-events', 'none')
+                    clearInterval(intervalID)
+                }
+                if (!$('.not-mines').hasClass('closed')) {
+                    if ($('select').val() === '初級' && (time < eazyFastTime.time || eazyFastTime.time === '-')) {
+                        Swal.fire({
+                            title: '初級最低秒數',
+                            text: '請輸入玩家名稱',
+                            input: 'text'
+                        }).then(result => {
+                            const name = result.value || 'あああああ'
+                            eazyFastTime.name = name
+                            eazyFastTime.time = Math.floor(time)
+
+                            $('#fast-name').text(eazyFastTime.name)
+                            $('#fast-time').text(eazyFastTime.time)
+
+                            localStorage.eazyMines = JSON.stringify(eazyFastTime)
+                        })
+                    }
+                    else if ($('select').val() === '中級' && (time < normalFastTime.time || normalFastTime.time === '-')) {
+                        Swal.fire({
+                            title: '中級最低秒數',
+                            text: '請輸入玩家名稱',
+                            input: 'text'
+                        }).then(result => {
+                            const name = result.value || 'あああああ'
+                            normalFastTime.name = name
+                            normalFastTime.time = Math.floor(time)
+
+                            $('#fast-name').text(normalFastTime.name)
+                            $('#fast-time').text(normalFastTime.time)
+
+                            localStorage.normalMines = JSON.stringify(normalFastTime)
+                        })
+                    }
+                    else if ($('select').val() === '高級' && (time < hardFastTime.time || hardFastTime.time === '-')) {
+                        Swal.fire({
+                            title: '高級最低秒數',
+                            text: '請輸入玩家名稱',
+                            input: 'text'
+                        }).then(result => {
+                            const name = result.value || 'あああああ'
+                            hardFastTime.name = name
+                            hardFastTime.time = Math.floor(time)
+
+                            $('#fast-name').text(hardFastTime.name)
+                            $('#fast-time').text(hardFastTime.time)
+
+                            localStorage.hardMines = JSON.stringify(hardFastTime)
+                        })
+                    }
+                    else {
+                        Swal.fire({
+                            title: '過關',
+                            text: `經過時間 : ${Math.floor(time)}`
+                        })
+                    }
+
+                    $('#game-area').css('pointer-events', 'none')
+                    clearInterval(intervalID)
+                }
+            }, 100)
+        })
+
+        // 遊戲區域鎖住滑鼠右鍵選單
+        $('#game-area').on('contextmenu', function (event) {
+            event.preventDefault()
+        })
+
+        // 點擊方格
+        $('#game-area').on('click', '.cover', function () {
+            $(this).css('display', 'none')
+            $(this).parent().removeClass('closed')
+
+            // 如果點到地雷
+            if ($(this).parent().hasClass('mines')) {
+                // 打開所有地雷
+                $('.mines').children().css('display', 'none')
+                $('.mines').removeClass('closed')
+            }
+            else {
+                // 印出周圍地雷數
+                $(this).parent().text(numOfMines($(this)))
+            }
+        })
+
+        // 右鍵插旗子
+        $('#game-area').on('contextmenu', '.cover', function () {
+            $(this).removeClass('cover')
+            $(this).addClass('flag')
+            mines--
+            $('#mines-left').text(mines)
+        })
+
+        // 右鍵拔旗子
+        $('#game-area').on('contextmenu', '.flag', function () {
+            $(this).removeClass('flag')
+            $(this).addClass('cover')
+            mines++
+            $('#mines-left').text(mines)
+        })
+
+        // 預設為初級版面
+        game(mines, lattices)
+    </script>
+</body>
+
+</html>
